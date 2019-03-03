@@ -3,6 +3,7 @@ import os
 import argparse
 import shutil
 import requests
+import mosspy
 
 from github import Github
 
@@ -13,7 +14,8 @@ def cleanup_dirs(wd, project_name):
 
 
 def startup_dirs(wd, project_name):
-    os.makedirs(os.path.join(wd, 'repos', project_name), exist_ok=True)
+    os.makedirs(
+        os.path.join(wd, 'repos', project_name, "starter"), exist_ok=True)
     os.makedirs(os.path.join(wd, 'out', project_name), exist_ok=True)
 
 
@@ -32,9 +34,33 @@ def download_starter(wd, project_name, g):
 
     for src in src_files:
         r = requests.get(src.download_url)
-        with open(os.path.join(wd, "repos", project_name, src.name),
-                  'wb') as f:
+        with open(
+                os.path.join(wd, "repos", project_name, "starter", src.name),
+                'wb') as f:
             f.write(r.content)
+
+
+def moss_compare(wd, project_name, moss_id):
+
+    repos_dir = os.path.join(wd, 'repos', project_name)
+    out_dir = os.path.join(wd, 'out', project_name)
+
+    m = mosspy.Moss(717626159, "python")
+    m.setDirectoryMode(True)
+    m.setIgnoreLimit(4)
+
+    for starter_src in os.listdir(os.path.join(repos_dir, 'starter')):
+        m.addBaseFile(os.path.join(repos_dir, "starter", starter_src))
+
+    m.addFilesByWildcard(
+        os.path.join(repos_dir, "students", "*",
+                     "src/main/java/ir/ac/kntu/*.java"))
+
+    report_url = m.send()
+    print("Report Url: " + report_url)
+    m.saveWebPage(report_url, "submission/report.html")
+
+    mosspy.download_report(report_url, out_dir, connections=8)
 
 
 def main():
@@ -65,7 +91,15 @@ def main():
         nargs='?',
         default=False,
         const=True,
-        help="Deletes previous output files and repos")
+        help="deletes previous output files and repos")
+    parser.add_argument(
+        "--mid",
+        metavar="MOSS ID",
+        dest="moss_id",
+        nargs='?',
+        help="Moss id used for sending requests. If not provided will look for"
+        + " env variable MOSS_ID. In case you dont have one visit" +
+        " http://theory.stanford.edu/~aiken/moss/")
 
     args = parser.parse_args()
 
@@ -79,14 +113,28 @@ def main():
                 + " Terminating!")
             raise SystemExit
 
+    if args.moss_id is None:
+        try:
+            args.moss_id = os.environ["MOSS_ID"]
+        except KeyError:
+            print("Please provide Moss id either through paramaters or" +
+                  "env variables. Terminating!")
+            raise SystemExit
+
     # Cleanup and setup
     if args.force_cleanup:
+        print("Cleaning up directories")
         cleanup_dirs(args.output, args.output)
 
+    print("Setting up directories")
     startup_dirs(args.output, args.project)
 
+    print("Downloading starter repository")
     download_starter(args.output, args.project,
                      connect_github(args.token, args.username, args.password))
+
+    print("Comparing files")
+    moss_compare(args.output, args.project, args.moss_id)
 
 
 if __name__ == '__main__':
