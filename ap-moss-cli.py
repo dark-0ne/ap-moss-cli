@@ -3,20 +3,19 @@ import os
 import argparse
 import shutil
 import requests
-import mosspy
+import re
+import subprocess
 
 from github import Github
 
 
 def cleanup_dirs(wd, project_name):
     shutil.rmtree(os.path.join(wd, 'repos', project_name), ignore_errors=True)
-    shutil.rmtree(os.path.join(wd, 'out', project_name), ignore_errors=True)
 
 
 def startup_dirs(wd, project_name):
     os.makedirs(
         os.path.join(wd, 'repos', project_name, "starter"), exist_ok=True)
-    os.makedirs(os.path.join(wd, 'out', project_name), exist_ok=True)
 
 
 def connect_github(token=None, username=None, pwd=None):
@@ -40,27 +39,32 @@ def download_starter(wd, project_name, g):
             f.write(r.content)
 
 
-def moss_compare(wd, project_name, moss_id):
+def setup_moss_script(moss_id):
+    with open("moss-starter.pl", "r") as read_file:
+        with open("mossnet.pl", "w") as write_file:
+            for line in read_file.readlines():
+                if line.startswith("$userid"):
+                    line = re.sub(r"[0-9]+", str(moss_id), line)
+                write_file.write(line)
+    os.chmod("mossnet.pl", 0o777)
+
+
+def moss_compare(wd, project_name):
 
     repos_dir = os.path.join(wd, 'repos', project_name)
-    out_dir = os.path.join(wd, 'out', project_name)
 
-    m = mosspy.Moss(717626159, "python")
-    m.setDirectoryMode(True)
-    m.setIgnoreLimit(4)
+    command = ['./mossnet.pl', '-l python', '-m 4']
 
     for starter_src in os.listdir(os.path.join(repos_dir, 'starter')):
-        m.addBaseFile(os.path.join(repos_dir, "starter", starter_src))
+        command.append('-b')
+        command.append(os.path.join(repos_dir, "starter", starter_src))
 
-    m.addFilesByWildcard(
-        os.path.join(repos_dir, "students", "*",
-                     "src/main/java/ir/ac/kntu/*.java"))
+    command.append('-d')
+    command.append(os.path.join(repos_dir, "students", "**", "*.java"))
 
-    report_url = m.send()
-    print("Report Url: " + report_url)
-    m.saveWebPage(report_url, "submission/report.html")
-
-    mosspy.download_report(report_url, out_dir, connections=8)
+    print(command)
+    proc = subprocess.run(command, capture_output=True)
+    print(proc)
 
 
 def main():
@@ -69,22 +73,24 @@ def main():
     parser = argparse.ArgumentParser(
         description=
         'Checks for code similarity in AP github repositories using MossNet.',
-        prog="ap-moss-cli")
+        prog="ap-moss-cli",
+        epilog="In case you dont have a moss user id visit" +
+        " http://theory.stanford.edu/~aiken/moss/")
     parser.add_argument(
         "project", help="Name of the project on the organization")
     parser.add_argument(
         "-u",
         "--username",
         nargs='?',
-        help="Github username. If not provided will look for token in env" +
-        " variable AP_MOSS_TOKEN")
+        help="Github username. If not provided will instead look for token in"
+        + " env variable AP_MOSS_TOKEN")
     parser.add_argument("-p", "--password", nargs='?', help="Github password")
     parser.add_argument(
         "-o",
         "--output",
         nargs='?',
         default=os.getcwd(),
-        help="Output files path. defaults to current working directory")
+        help="Path for storing downloaded repos. defaults to cwd/repos")
     parser.add_argument(
         "-f",
         "--force_cleanup",
@@ -98,8 +104,7 @@ def main():
         dest="moss_id",
         nargs='?',
         help="Moss id used for sending requests. If not provided will look for"
-        + " env variable MOSS_ID. In case you dont have one visit" +
-        " http://theory.stanford.edu/~aiken/moss/")
+        + " env variable MOSS_ID.")
 
     args = parser.parse_args()
 
@@ -134,8 +139,10 @@ def main():
                      connect_github(args.token, args.username, args.password))
 
     print("Comparing files")
-    moss_compare(args.output, args.project, args.moss_id)
+    moss_compare(args.output, args.project)
 
 
 if __name__ == '__main__':
-    main()
+    # main()
+    setup_moss_script(717626159)
+    moss_compare(os.getcwd(), 'tahw1-word-split')
