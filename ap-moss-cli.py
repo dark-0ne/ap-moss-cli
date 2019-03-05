@@ -13,15 +13,19 @@ def __version__():
 
 
 def cleanup_dirs(wd, project_name):
+    """Removes specified project repos directory."""
     shutil.rmtree(os.path.join(wd, 'repos', project_name), ignore_errors=True)
 
 
-def startup_dirs(wd, project_name):
+def setup_dirs(wd, project_name):
+    """Creates required directories for specified project."""
+
     os.makedirs(
         os.path.join(wd, 'repos', project_name, "starter"), exist_ok=True)
 
 
 def connect_github(token=None, username=None, pwd=None):
+    """Connects to github either with a token or username/pwd."""
     if token is None:
         return github.Github(username, pwd)
     else:
@@ -29,6 +33,7 @@ def connect_github(token=None, username=None, pwd=None):
 
 
 def download_starter(wd, project_name, g):
+    """Downloads src java files from specified project starter repo."""
 
     try:
         repo = g.get_repo("k-n-toosi-university-of-technology/" +
@@ -41,15 +46,22 @@ def download_starter(wd, project_name, g):
                                  src.name), 'wb') as f:
                 f.write(r.content)
     except github.GithubException as e:
-        print(e)
-        print(
-            "\nProblem downloading starter repo. Maybe incorrect project name?"
-        )
+        if e.status == 401:
+            print(
+                "\nInvalid credentials. Check your github token/username-pwd.")
+        elif e.status == 404:
+            print(
+                "\nCould not find starter repo. Maybe incorrect project name?")
+        else:
+            print("\nProblem downloading starter repo. More info:")
+            print(e)
+
         print("Terminating!")
         raise SystemExit
 
 
 def setup_moss_script(moss_id):
+    """Creates new moss perl script with provided moss user_id."""
     with open("moss-starter.pl", "r") as read_file:
         with open("mossnet.pl", "w") as write_file:
             for line in read_file.readlines():
@@ -60,6 +72,7 @@ def setup_moss_script(moss_id):
 
 
 def moss_compare(wd, project_name):
+    """Calls created perl script with required parameters."""
 
     repos_dir = os.path.join(wd, 'repos', project_name)
 
@@ -130,6 +143,8 @@ def main():
                 "Please provide either username/pwd or auth token for github."
                 + " \nTerminating!")
             raise SystemExit
+    else:
+        args.token = None
 
     if args.moss_id is None:
         try:
@@ -145,7 +160,7 @@ def main():
         cleanup_dirs(args.output, args.output)
 
     print("Setting up directories")
-    startup_dirs(args.output, args.project)
+    setup_dirs(args.output, args.project)
 
     print("Downloading starter repository")
     download_starter(args.output, args.project,
