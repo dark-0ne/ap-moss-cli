@@ -56,8 +56,7 @@ def download_starter(wd, project_name, g):
             print("\nProblem downloading starter repo. More info:")
             print(e)
 
-        print("Terminating!")
-        raise SystemExit
+        terminate(wd, project_name)
 
 
 def setup_moss_script(moss_id):
@@ -86,6 +85,12 @@ def moss_compare(wd, project_name):
     command += os.path.join(repos_dir, "students", "**", "*.java")
 
     os.system(command)
+
+
+def terminate(wd, project_name):
+    print("Cleaning up created directories before terminating!")
+    cleanup_dirs(wd, project_name)
+    raise SystemExit
 
 
 def main():
@@ -118,7 +123,7 @@ def main():
         nargs='?',
         default=False,
         const=True,
-        help="deletes previous output files and repos")
+        help="Delete downloaded repo files after script is done.")
     parser.add_argument(
         "--mid",
         metavar="MOSS ID",
@@ -140,9 +145,8 @@ def main():
             args.token = os.environ["AP_MOSS_TOKEN"]
         except KeyError:
             print(
-                "Please provide either username/pwd or auth token for github."
-                + " \nTerminating!")
-            raise SystemExit
+                "Please provide either username/pwd or auth token for github.")
+            terminate(args.output, args.project)
     else:
         args.token = None
 
@@ -151,13 +155,10 @@ def main():
             args.moss_id = os.environ["MOSS_ID"]
         except KeyError:
             print("Please provide Moss id either through paramaters or" +
-                  "env variables.\nTerminating!")
-            raise SystemExit
+                  "env variables.")
+            terminate(args.output, args.project)
 
-    # Cleanup and setup
-    if args.force_cleanup:
-        print("Cleaning up directories")
-        cleanup_dirs(args.output, args.output)
+    # Setup
 
     print("Setting up directories")
     setup_dirs(args.output, args.project)
@@ -168,6 +169,11 @@ def main():
 
     print("Comparing files")
     moss_compare(args.output, args.project)
+
+    # Cleanup
+    if args.force_cleanup:
+        print("Cleaning up directories")
+        cleanup_dirs(args.output, args.output)
 
 
 if __name__ == '__main__':
