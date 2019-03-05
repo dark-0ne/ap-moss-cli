@@ -4,9 +4,12 @@ import argparse
 import shutil
 import requests
 import re
-import subprocess
 
-from github import Github
+import github
+
+
+def __version__():
+    return "1.0.0"
 
 
 def cleanup_dirs(wd, project_name):
@@ -20,23 +23,30 @@ def startup_dirs(wd, project_name):
 
 def connect_github(token=None, username=None, pwd=None):
     if token is None:
-        return Github(username, pwd)
+        return github.Github(username, pwd)
     else:
-        return Github(token)
+        return github.Github(token)
 
 
 def download_starter(wd, project_name, g):
 
-    repo = g.get_repo("k-n-toosi-university-of-technology/" + project_name +
-                      '-starter')
-    src_files = repo.get_contents("src/main/java/ir/ac/kntu")
-
-    for src in src_files:
-        r = requests.get(src.download_url)
-        with open(
-                os.path.join(wd, "repos", project_name, "starter", src.name),
-                'wb') as f:
-            f.write(r.content)
+    try:
+        repo = g.get_repo("k-n-toosi-university-of-technology/" +
+                          project_name + '-starter')
+        src_files = repo.get_contents("src/main/java/ir/ac/kntu")
+        for src in src_files:
+            r = requests.get(src.download_url)
+            with open(
+                    os.path.join(wd, "repos", project_name, "starter",
+                                 src.name), 'wb') as f:
+                f.write(r.content)
+    except github.GithubException as e:
+        print(e)
+        print(
+            "\nProblem downloading starter repo. Maybe incorrect project name?"
+        )
+        print("Terminating!")
+        raise SystemExit
 
 
 def setup_moss_script(moss_id):
@@ -53,18 +63,16 @@ def moss_compare(wd, project_name):
 
     repos_dir = os.path.join(wd, 'repos', project_name)
 
-    command = ['./mossnet.pl', '-l python', '-m 4']
+    command = './mossnet.pl -l python -m 4'
 
     for starter_src in os.listdir(os.path.join(repos_dir, 'starter')):
-        command.append('-b')
-        command.append(os.path.join(repos_dir, "starter", starter_src))
+        command += ' -b '
+        command += os.path.join(repos_dir, "starter", starter_src)
 
-    command.append('-d')
-    command.append(os.path.join(repos_dir, "students", "**", "*.java"))
+    command += ' -d '
+    command += os.path.join(repos_dir, "students", "**", "*.java")
 
-    print(command)
-    proc = subprocess.run(command, capture_output=True)
-    print(proc)
+    os.system(command)
 
 
 def main():
@@ -105,6 +113,11 @@ def main():
         nargs='?',
         help="Moss id used for sending requests. If not provided will look for"
         + " env variable MOSS_ID.")
+    parser.add_argument(
+        "-v",
+        "--version",
+        action='version',
+        version="%(prog)s " + __version__())
 
     args = parser.parse_args()
 
@@ -115,7 +128,7 @@ def main():
         except KeyError:
             print(
                 "Please provide either username/pwd or auth token for github."
-                + " Terminating!")
+                + " \nTerminating!")
             raise SystemExit
 
     if args.moss_id is None:
@@ -123,7 +136,7 @@ def main():
             args.moss_id = os.environ["MOSS_ID"]
         except KeyError:
             print("Please provide Moss id either through paramaters or" +
-                  "env variables. Terminating!")
+                  "env variables.\nTerminating!")
             raise SystemExit
 
     # Cleanup and setup
@@ -143,6 +156,4 @@ def main():
 
 
 if __name__ == '__main__':
-    # main()
-    setup_moss_script(717626159)
-    moss_compare(os.getcwd(), 'tahw1-word-split')
+    main()
