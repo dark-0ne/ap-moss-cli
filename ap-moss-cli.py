@@ -7,6 +7,7 @@ import re
 import datetime
 
 import github
+from tqdm import tqdm
 
 
 def __version__():
@@ -44,7 +45,7 @@ def download_starter(wd, project_name, g):
 
         # TODO: support user provided paths
         src_files = repo.get_contents("src/main/java/ir/ac/kntu")
-        for src in src_files:
+        for src in tqdm(src_files, "Downloading starter repository"):
             if re.match(r"\w*\.java$", src.name):
                 r = requests.get(src.download_url)
                 with open(
@@ -70,15 +71,18 @@ def download_students(wd, project_name, g, due):
     """Downloads src java files from specified project students repo."""
 
     org = g.get_organization("k-n-toosi-university-of-technology")
-    collaborators = org.get_outside_collaborators()
+    student_names = [
+        student.login for student in org.get_outside_collaborators()
+    ]
 
     empty_or_no_repo = 0
     no_valid_commit = 0
     java_pattern = re.compile(r'\w*\.java$')
-    for student in collaborators:
+
+    for name in tqdm(student_names, "Downloading student repositories"):
         try:
             repo = g.get_repo("k-n-toosi-university-of-technology/" +
-                              project_name + "-" + student.login)
+                              project_name + "-" + str(name))
             last_commit_sha = repo.get_commits(until=due)[0].sha
 
             # TODO: support user provided paths
@@ -86,7 +90,7 @@ def download_students(wd, project_name, g, due):
                 "src/main/java/ir/ac/kntu", ref=last_commit_sha)
 
             student_path = os.path.join(wd, 'repos', project_name, "students",
-                                        student.login)
+                                        str(name))
             # pylint: disable=E1123
             os.makedirs(student_path, exist_ok=True)
             for content in src_contents:
@@ -100,7 +104,7 @@ def download_students(wd, project_name, g, due):
             if e.status == 404 or e.status == 409:
                 empty_or_no_repo += 1
             else:
-                print("Could not get " + student.login + ". More info:")
+                print("Could not get " + str(name) + ". More info:")
                 print(e)
                 terminate(wd, project_name)
 
@@ -258,16 +262,13 @@ def main():
         cleanup_dirs(args.output, args.project)
         setup_dirs(args.output, args.project)
 
-        print("Downloading starter repository")
         download_starter(args.output, args.project, g)
 
-        print("Downloading student repositories")
         empty_repos, invalid_commits = download_students(
             args.output, args.project, g, args.due)
 
-        print(
-            "{} students with no/empty repos; {} with no" +
-            " commits before deadline", empty_repos, invalid_commits)
+        print("{} with empty/no repos; {} with no commits before deadline".
+              format(empty_repos, invalid_commits))
 
     print("Setting up moss script")
     setup_moss_script(args.moss_id)
