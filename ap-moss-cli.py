@@ -4,12 +4,13 @@ import argparse
 import shutil
 import requests
 import re
+import datetime
 
 import github
 
 
 def __version__():
-    return "1.0.0"
+    return "1.1.0"
 
 
 def cleanup_dirs(wd, project_name):
@@ -27,6 +28,7 @@ def setup_dirs(wd, project_name):
 
 def connect_github(token=None, username=None, pwd=None):
     """Connects to github either with a token or username/pwd."""
+
     if token is None:
         return github.Github(username, pwd)
     else:
@@ -39,13 +41,17 @@ def download_starter(wd, project_name, g):
     try:
         repo = g.get_repo("k-n-toosi-university-of-technology/" +
                           project_name + '-starter')
+
+        # TODO: support user provided paths
         src_files = repo.get_contents("src/main/java/ir/ac/kntu")
         for src in src_files:
-            r = requests.get(src.download_url)
-            with open(
-                    os.path.join(wd, "repos", project_name, "starter",
-                                 src.name), 'wb') as f:
-                f.write(r.content)
+            if re.match(r"\w*\.java$", src.name):
+                r = requests.get(src.download_url)
+                with open(
+                        os.path.join(wd, "repos", project_name, "starter",
+                                     src.name), 'wb') as f:
+                    f.write(r.content)
+
     except github.GithubException as e:
         if e.status == 401:
             print(
@@ -54,7 +60,7 @@ def download_starter(wd, project_name, g):
             print(
                 "\nCould not find starter repo. Maybe incorrect project name?")
         else:
-            print("\nProblem downloading starter repo. More info:")
+            print("Could not download starter repo. More info:")
             print(e)
 
         terminate(wd, project_name)
@@ -65,10 +71,46 @@ def download_students(wd, project_name, g, due):
 
     org = g.get_organization("k-n-toosi-university-of-technology")
     collaborators = org.get_outside_collaborators()
-    map(lambda x: x.login, collaborators)
 
+    empty_or_no_repo = 0
+    no_valid_commit = 0
+    java_pattern = re.compile(r'\w*\.java$')
     for student in collaborators:
-        repo = g.get_repo("k-n-toosi-university-of-technology")
+        try:
+            repo = g.get_repo("k-n-toosi-university-of-technology/" +
+                              project_name + "-" + student.login)
+            last_commit_sha = repo.get_commits(until=due)[0].sha
+
+            # TODO: support user provided paths
+            src_contents = repo.get_contents(
+                "src/main/java/ir/ac/kntu", ref=last_commit_sha)
+
+            student_path = os.path.join(wd, 'repos', project_name, "students",
+                                        student.login)
+            # pylint: disable=E1123
+            os.makedirs(student_path, exist_ok=True)
+            for content in src_contents:
+                if java_pattern.match(content.name):
+                    r = requests.get(content.download_url)
+                    with open(os.path.join(student_path, content.name),
+                              'wb') as f:
+                        f.write(r.content)
+
+        except github.GithubException as e:
+            if e.status == 404 or e.status == 409:
+                empty_or_no_repo += 1
+            else:
+                print("Could not get " + student.login + ". More info:")
+                print(e)
+                terminate(wd, project_name)
+
+        except IndexError:
+            no_valid_commit += 1
+
+        except requests.exceptions.MissingSchema:
+            pass
+
+    return empty_or_no_repo, no_valid_commit
 
 
 def setup_moss_script(moss_id):
@@ -82,7 +124,7 @@ def setup_moss_script(moss_id):
     os.chmod("mossnet.pl", 0o777)
 
 
-def moss_compare(wd, project_name):
+def run_moss_script(wd, project_name):
     """Calls created perl script with required parameters."""
 
     repos_dir = os.path.join(wd, 'repos', project_name)
@@ -94,7 +136,7 @@ def moss_compare(wd, project_name):
         command += os.path.join(repos_dir, "starter", starter_src)
 
     command += ' -d '
-    command += os.path.join(repos_dir, "students", "**", "*.java")
+    command += os.path.join(repos_dir, "students", "*", "*.java")
 
     os.system(command)
 
@@ -146,6 +188,10 @@ def main():
         + " env variable AP_MOSS_TOKEN")
     parser.add_argument("-p", "--password", nargs='?', help="Github password")
     parser.add_argument(
+        "--due",
+        metavar="YYYY-MM-DD-HH",
+        help="Homework deadline time. Defaults to now")
+    parser.add_argument(
         "-o",
         "--output",
         nargs='?',
@@ -185,6 +231,7 @@ def main():
     else:
         args.token = None
 
+    # Check for moss_id
     if args.moss_id is None:
         try:
             args.moss_id = os.environ["MOSS_ID"]
@@ -193,9 +240,15 @@ def main():
                   "env variables.")
             terminate(args.output, args.project)
 
-    # Setup
+    # Parse deadline time
+    if args.due is None:
+        args.due = datetime.datetime.now()
+    else:
+        args.due = datetime.datetime.strptime(args.due, "%Y-%m-%d-%H")
 
+    # Setup
     print("Setting up directories")
+    cleanup_dirs(args.output, args.project)
     setup_dirs(args.output, args.project)
 
     g = connect_github(args.token, args.username, args.password)
@@ -203,19 +256,24 @@ def main():
     print("Downloading starter repository")
     download_starter(args.output, args.project, g)
 
-    # print("Downloading student repositories")
-    # download_students(args.ouput, args.project, g)
+    print("Downloading student repositories")
+    empty_repos, invalid_commits = download_students(args.output, args.project,
+                                                     g, args.due)
+
+    print(
+        "{} students with no/empty repos; {} with no commits before deadline",
+        empty_repos, invalid_commits)
 
     print("Setting up moss script")
     setup_moss_script(args.moss_id)
 
-    print("Comparing files")
-    moss_compare(args.output, args.project)
+    print("Running moss script")
+    run_moss_script(args.output, args.project)
 
     # Cleanup
     if args.force_cleanup:
         print("Cleaning up directories")
-        cleanup_dirs(args.output, args.output)
+        cleanup_dirs(args.output, args.project)
 
 
 if __name__ == '__main__':
