@@ -190,7 +190,7 @@ def main():
     parser.add_argument(
         "--due",
         metavar="YYYY-MM-DD-HH",
-        help="Homework deadline time. Defaults to now")
+        help="Homework deadline time. Defaults to datetime.now()")
     parser.add_argument(
         "-o",
         "--output",
@@ -198,20 +198,24 @@ def main():
         default=os.getcwd(),
         help="Path for storing downloaded repos. defaults to cwd/repos")
     parser.add_argument(
+        "-s",
+        "--skip-github",
+        action="store_true",
+        help=  # noqa
+        "Skip downloading student and starter repos from github and use local"
+        + " files instead")
+    parser.add_argument(
         "-f",
-        "--force_cleanup",
-        nargs='?',
-        default=False,
-        metavar='',
-        const=True,
-        help="Delete downloaded repo files after script is done.")
+        "--force-cleanup",
+        action="store_true",
+        help="Delete downloaded repo files after script is done")
     parser.add_argument(
         "--mid",
         metavar="MOSS ID",
         dest="moss_id",
         nargs='?',
         help="Moss id used for sending requests. If not provided will look for"
-        + " env variable MOSS_ID.")
+        + " env variable MOSS_ID")
     parser.add_argument(
         "-v",
         "--version",
@@ -246,23 +250,24 @@ def main():
     else:
         args.due = datetime.datetime.strptime(args.due, "%Y-%m-%d-%H")
 
-    # Setup
-    print("Setting up directories")
-    cleanup_dirs(args.output, args.project)
-    setup_dirs(args.output, args.project)
-
     g = connect_github(args.token, args.username, args.password)
 
-    print("Downloading starter repository")
-    download_starter(args.output, args.project, g)
+    if not args.skip_github:
+        # Setup
+        print("Setting up directories")
+        cleanup_dirs(args.output, args.project)
+        setup_dirs(args.output, args.project)
 
-    print("Downloading student repositories")
-    empty_repos, invalid_commits = download_students(args.output, args.project,
-                                                     g, args.due)
+        print("Downloading starter repository")
+        download_starter(args.output, args.project, g)
 
-    print(
-        "{} students with no/empty repos; {} with no commits before deadline",
-        empty_repos, invalid_commits)
+        print("Downloading student repositories")
+        empty_repos, invalid_commits = download_students(
+            args.output, args.project, g, args.due)
+
+        print(
+            "{} students with no/empty repos; {} with no" +
+            " commits before deadline", empty_repos, invalid_commits)
 
     print("Setting up moss script")
     setup_moss_script(args.moss_id)
