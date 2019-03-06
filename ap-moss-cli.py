@@ -128,12 +128,12 @@ def setup_moss_script(moss_id):
     os.chmod("mossnet.pl", 0o777)
 
 
-def run_moss_script(wd, project_name):
+def run_moss_script(wd, project_name, m):
     """Calls created perl script with required parameters."""
 
     repos_dir = os.path.join(wd, 'repos', project_name)
 
-    command = './mossnet.pl -l python -m 4'
+    command = './mossnet.pl -l python -m ' + str(m)
 
     for starter_src in os.listdir(os.path.join(repos_dir, 'starter')):
         command += ' -b '
@@ -221,6 +221,11 @@ def main():
         help="Moss id used for sending requests. If not provided will look for"
         + " env variable MOSS_ID")
     parser.add_argument(
+        "-m",
+        nargs='?',
+        default=4,
+        help="m parameter used in moss script")
+    parser.add_argument(
         "-v",
         "--version",
         action='version',
@@ -274,7 +279,7 @@ def main():
     setup_moss_script(args.moss_id)
 
     print("Running moss script")
-    run_moss_script(args.output, args.project)
+    run_moss_script(args.output, args.project,args.m)
 
     # Cleanup
     if args.force_cleanup:
