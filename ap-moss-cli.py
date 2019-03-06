@@ -20,6 +20,7 @@ def cleanup_dirs(wd, project_name):
 def setup_dirs(wd, project_name):
     """Creates required directories for specified project."""
 
+    # pylint: disable=E1123
     os.makedirs(
         os.path.join(wd, 'repos', project_name, "starter"), exist_ok=True)
 
@@ -59,6 +60,17 @@ def download_starter(wd, project_name, g):
         terminate(wd, project_name)
 
 
+def download_students(wd, project_name, g, due):
+    """Downloads src java files from specified project students repo."""
+
+    org = g.get_organization("k-n-toosi-university-of-technology")
+    collaborators = org.get_outside_collaborators()
+    map(lambda x: x.login, collaborators)
+
+    for student in collaborators:
+        repo = g.get_repo("k-n-toosi-university-of-technology")
+
+
 def setup_moss_script(moss_id):
     """Creates new moss perl script with provided moss user_id."""
     with open("moss-starter.pl", "r") as read_file:
@@ -93,17 +105,39 @@ def terminate(wd, project_name):
     raise SystemExit
 
 
+class CustomHelpFormatter(argparse.HelpFormatter):
+    """
+    Formats argparse help output
+    """
+
+    # pylint: disable=E1004, E1101
+
+    def __init__(self, prog):
+        super().__init__(prog, max_help_position=40, width=100)
+
+    def _format_action_invocation(self, action):
+        if not action.option_strings or action.nargs == 0:
+            return super()._format_action_invocation(action)
+        default = self._get_default_metavar_for_optional(action)
+        args_string = self._format_args(action, default)
+        return ', '.join(action.option_strings) + ' ' + args_string
+
+
 def main():
 
     # Setup arg parser
+    fmt = lambda prog: CustomHelpFormatter(prog)  # noqa
     parser = argparse.ArgumentParser(
-        description=
+        description=  # noqa
         'Checks for code similarity in AP github repositories using MossNet.',
         prog="ap-moss-cli",
+        formatter_class=fmt,
         epilog="In case you dont have a moss user id visit" +
         " http://theory.stanford.edu/~aiken/moss/")
     parser.add_argument(
-        "project", help="Name of the project on the organization")
+        "project",
+        metavar="project_name",
+        help="Name of the project on the organization")
     parser.add_argument(
         "-u",
         "--username",
@@ -122,6 +156,7 @@ def main():
         "--force_cleanup",
         nargs='?',
         default=False,
+        metavar='',
         const=True,
         help="Delete downloaded repo files after script is done.")
     parser.add_argument(
@@ -163,9 +198,16 @@ def main():
     print("Setting up directories")
     setup_dirs(args.output, args.project)
 
+    g = connect_github(args.token, args.username, args.password)
+
     print("Downloading starter repository")
-    download_starter(args.output, args.project,
-                     connect_github(args.token, args.username, args.password))
+    download_starter(args.output, args.project, g)
+
+    # print("Downloading student repositories")
+    # download_students(args.ouput, args.project, g)
+
+    print("Setting up moss script")
+    setup_moss_script(args.moss_id)
 
     print("Comparing files")
     moss_compare(args.output, args.project)
