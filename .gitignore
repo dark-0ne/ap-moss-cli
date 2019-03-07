@@ -116,5 +116,5 @@ dmypy.json
 .pyre/
 # project specific
 repos
-mossnet.pl
+outs
 

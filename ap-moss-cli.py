@@ -5,9 +5,11 @@ import shutil
 import requests
 import re
 import datetime
+import webbrowser
 
 import github
 from tqdm import tqdm
+import mosspy
 
 
 def __version__():
@@ -17,6 +19,7 @@ def __version__():
 def cleanup_dirs(wd, project_name):
     """Removes specified project repos directory."""
     shutil.rmtree(os.path.join(wd, 'repos', project_name), ignore_errors=True)
+    shutil.rmtree(os.path.join(wd, 'outs', project_name), ignore_errors=True)
 
 
 def setup_dirs(wd, project_name):
@@ -25,6 +28,8 @@ def setup_dirs(wd, project_name):
     # pylint: disable=E1123
     os.makedirs(
         os.path.join(wd, 'repos', project_name, "starter"), exist_ok=True)
+
+    os.makedirs(os.path.join(wd, 'outs', project_name), exist_ok=True)
 
 
 def connect_github(token=None, username=None, pwd=None):
@@ -117,32 +122,27 @@ def download_students(wd, project_name, g, due):
     return empty_or_no_repo, no_valid_commit
 
 
-def setup_moss_script(moss_id):
-    """Creates new moss perl script with provided moss user_id."""
-    with open("moss-starter.pl", "r") as read_file:
-        with open("mossnet.pl", "w") as write_file:
-            for line in read_file.readlines():
-                if line.startswith("$userid"):
-                    line = re.sub(r"[0-9]+", str(moss_id), line)
-                write_file.write(line)
-    os.chmod("mossnet.pl", 0o777)
+def run_mosspy(wd, project_name, m, uid):
 
-
-def run_moss_script(wd, project_name, m):
-    """Calls created perl script with required parameters."""
-
+    mpy = mosspy.Moss(uid, "python")
     repos_dir = os.path.join(wd, 'repos', project_name)
 
-    command = './mossnet.pl -l python -m ' + str(m)
-
     for starter_src in os.listdir(os.path.join(repos_dir, 'starter')):
-        command += ' -b '
-        command += os.path.join(repos_dir, "starter", starter_src)
+        mpy.addBaseFile(os.path.join(repos_dir, 'starter', starter_src))
 
-    command += ' -d '
-    command += os.path.join(repos_dir, "students", "*", "*.java")
+    mpy.addFilesByWildcard(os.path.join(repos_dir, "students", "*", "*.java"))
+    report_url = mpy.send()
+    print("Report url: " + report_url)
 
-    os.system(command)
+    return report_url
+
+
+def download_report(wd, project_name, report_url):
+
+    outs_dir = os.path.join(wd, "outs", project_name)
+
+    mosspy.download_report(
+        report_url, os.path.join(outs_dir, "report.html"), connections=8)
 
 
 def terminate(wd, project_name):
@@ -214,6 +214,10 @@ def main():
         action="store_true",
         help="Delete downloaded repo files after script is done")
     parser.add_argument(
+        "--skip-report",
+        action="store_true",
+        help="Skip downloading report and just print report url")
+    parser.add_argument(
         "--mid",
         metavar="MOSS ID",
         dest="moss_id",
@@ -221,10 +225,7 @@ def main():
         help="Moss id used for sending requests. If not provided will look for"
         + " env variable MOSS_ID")
     parser.add_argument(
-        "-m",
-        nargs='?',
-        default=4,
-        help="m parameter used in moss script")
+        "-m", nargs='?', default=4, help="m parameter used in moss script")
     parser.add_argument(
         "-v",
         "--version",
@@ -275,16 +276,21 @@ def main():
         print("{} with empty/no repos; {} with no commits before deadline".
               format(empty_repos, invalid_commits))
 
-    print("Setting up moss script")
-    setup_moss_script(args.moss_id)
+    print("Running mosspy")
+    report_url = run_mosspy(args.output, args.project, args.m, args.moss_id)
 
-    print("Running moss script")
-    run_moss_script(args.output, args.project,args.m)
+    if args.skip_report:
+        webbrowser.open_new_tab(report_url)
+    else:
+        print("Saving report")
+        download_report(args.output, args.project, report_url)
 
     # Cleanup
     if args.force_cleanup:
-        print("Cleaning up directories")
-        cleanup_dirs(args.output, args.project)
+        print("Cleaning up repo directories")
+        shutil.rmtree(
+            os.path.join(args.output, 'repos', args.project),
+            ignore_errors=True)
 
 
 if __name__ == '__main__':
