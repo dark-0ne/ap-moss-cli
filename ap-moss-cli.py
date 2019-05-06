@@ -125,6 +125,7 @@ def download_students(wd, project_name, g, due):
 def run_mosspy(wd, project_name, m, uid):
 
     mpy = mosspy.Moss(uid, "python")
+    mpy.setIgnoreLimit(m)
     repos_dir = os.path.join(wd, 'repos', project_name)
 
     for starter_src in os.listdir(os.path.join(repos_dir, 'starter')):
